@@ -4,12 +4,11 @@ import (
   // "github.com/strava/go.strava"
   // "time"
   // "os"
-  // "fmt"
-  // "log"
-  // "gopkg.in/yaml.v2"
-  // "path/filepath"
-  // "io/ioutil"
-  "github.com/dtuite/strava-commuter/config"
+  "fmt"
+  "log"
+  "gopkg.in/yaml.v2"
+  "path/filepath"
+  "io/ioutil"
 )
 
 // https://www.strava.com/oauth/authorize?client_id=7724&response_type=code&redirect_uri=http://localhost:3000&scope=write
@@ -28,9 +27,32 @@ import (
 //   IsCommute bool `yaml:"commute"`
 // }
 
+type Config struct {
+  AccessToken string `yaml:"access_token"`
+}
+
+func (config *Config) Read(pathString string) {
+  // TODO: Move this into a function to DRY it. I'm doing the same thing twice.
+  filename, _ := filepath.Abs(pathString)
+  yamlFile, err := ioutil.ReadFile(filename)
+
+  if err != nil {
+    log.Fatalf("Error reading file %v: %v\n", filename, err)
+  }
+
+  err = yaml.Unmarshal(yamlFile, &config)
+
+  if err != nil {
+    log.Fatalf("Error parsing YAML from %v: %v\n", filename, err)
+  }
+
+  fmt.Printf("Using access token from %v: %v\n", filename, config.AccessToken)
+}
+
 func main() {
-  config := stravacommuterconfig.Config{}
+  config := Config{}
   config.Read("./config.yml")
+  fmt.Printf("Got the access token %v\n", config.AccessToken)
 
   // filename, _ := filepath.Abs("./activity.yml")
   // yamlFile, err := ioutil.ReadFile(filename)
