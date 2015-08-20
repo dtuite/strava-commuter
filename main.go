@@ -2,8 +2,8 @@ package main
 
 import (
   // "github.com/strava/go.strava"
-  // "time"
-  // "os"
+  "regexp"
+  "time"
   "fmt"
   "log"
   "gopkg.in/yaml.v2"
@@ -18,14 +18,41 @@ import (
 //      -F client_secret=ceb5f0a3e4fd38e1bbbe18e4c1443f7abcd09785 \
 //      -F code=70b48fab7ede3742952e39954115f04f61f90f65
 
-// type Activity struct {
-//   Name string
-//   Duration int
-//   Description string
-//   GearId string `yaml:"gear_id"`
-//   Distance float64
-//   IsCommute bool `yaml:"commute"`
-// }
+func check(e error) {
+  if e != nil {
+    panic(e)
+  }
+}
+
+var iso8601, _ = regexp.Compile("\\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ")
+const layout = "2006-01-02T15:04:05Z0700" // ISO 8601
+
+func buildReplacer(distance time.Duration) func([]byte) []byte {
+  return func(pointTime []byte) []byte {
+    pointTimeTime, err := time.Parse(layout, string(pointTime))
+    check(err)
+    // fmt.Printf("Parsed time: %v -- %v -- %v\n", string(pointTime), pointTimeTime)
+    pointTimeTime = pointTimeTime.Add(distance)
+    return []byte(pointTimeTime.Format(layout))
+  }
+}
+
+func durationSinceTemplateFinish(gpx []byte, now time.Time) time.Duration {
+  gpxTimes := iso8601.FindAll(gpx, -1)
+  gpxFinishTimeString := string(gpxTimes[len(gpxTimes) - 1])
+  gpxFinishTime, _ := time.Parse(layout, gpxFinishTimeString)
+  return now.Sub(gpxFinishTime)
+}
+
+func ReplaceFile(filepath string, newFilepath string, newFinishTime time.Time) {
+  template, _ := ioutil.ReadFile(filepath)
+
+  distance := durationSinceTemplateFinish(template, newFinishTime)
+  template = iso8601.ReplaceAllFunc(template, buildReplacer(distance))
+
+  err := ioutil.WriteFile(newFilepath, template, 0644)
+  check(err)
+}
 
 type Config struct {
   AccessToken string `yaml:"access_token"`
@@ -54,28 +81,7 @@ func main() {
   config.Read("./config.yml")
   fmt.Printf("Got the access token %v\n", config.AccessToken)
 
-  // filename, _ := filepath.Abs("./activity.yml")
-  // yamlFile, err := ioutil.ReadFile(filename)
-
-  // if err != nil {
-  //   log.Fatalf("Error reading file %v: %v\n", filename, err)
-  // }
-
-  // activity := Activity{}
-  // err = yaml.Unmarshal(yamlFile, &activity)
-
-  // if err != nil {
-  //   log.Fatalf("Error parsing YAML from %v: %v\n", filename, err)
-  // }
-
-  // fmt.Printf("Uploading activity from %v\n", filename)
-  // fmt.Printf("Uploading\n%v\n\n", activity)
-
-  // client := strava.NewClient(config.AccessToken)
-  // service := strava.NewActivitiesService(client)
-
-  // // TODO: Parse the start time from the YAML
-  // startTime := time.Now()
+  ReplaceFile("./to-work.gpx", "fixed-to-work.gpx", time.Now())
 
   // stravaActivity, err := service.Create(activity.Name, strava.ActivityTypes.Ride, startTime, activity.Duration).
   //                                 Description(activity.Description).
