@@ -9,14 +9,10 @@ import (
   "path/filepath"
   "io/ioutil"
   "os"
+  "flag"
+  "fmt"
+  "strings"
 )
-
-// https://www.strava.com/oauth/authorize?client_id=7724&response_type=code&redirect_uri=http://localhost:3000&scope=write
-
-// curl -X POST https://www.strava.com/oauth/token \
-//      -F client_id=7724 \
-//      -F client_secret=ceb5f0a3e4fd38e1bbbe18e4c1443f7abcd09785 \
-//      -F code=70b48fab7ede3742952e39954115f04f61f90f65
 
 func check(e error) {
   if e != nil {
@@ -67,20 +63,25 @@ func (config *Config) Read(pathString string) {
   check(err)
 }
 
-func UploadGPX(config Config, gpxFilepath string) *strava.ActivityDetailed {
+func UploadGPX(config Config, gpxFilename string) *strava.ActivityDetailed {
   client := strava.NewClient(config.AccessToken)
 	uploadService := strava.NewUploadsService(client)
   activityService := strava.NewActivitiesService(client)
 
-  fileReader, err := os.Open(gpxFilepath)
+  activityName := strings.Replace(gpxFilename, "-", " ", -1)
+  activityName = strings.TrimSuffix(activityName, ".gpx")
+  activityName = strings.Title(activityName)
+
+  targetFile, _ := filepath.Abs(gpxFilename)
+  fileReader, err := os.Open(targetFile)
   check(err)
 
   log.Printf("About to upload file\n")
 
   upload, err := uploadService.
-		Create(strava.FileDataTypes.GPX, "fixed-to-work.gpx", fileReader).
+		Create(strava.FileDataTypes.GPX, gpxFilename, fileReader).
     ActivityType(strava.ActivityTypes.Ride).
-    Name("Test Upload 1").
+    Name(activityName).
     Description(config.DefaultActivityDescription).
 		Do()
 
@@ -101,19 +102,29 @@ func UploadGPX(config Config, gpxFilepath string) *strava.ActivityDetailed {
 }
 
 func main() {
-  templateFile, _ := filepath.Abs("./to-work.gpx")
-  targetFile, _ := filepath.Abs("./fixed-to-work.gpx")
-  configFile, _ := filepath.Abs("./config.yml")
+  gpxFileFlag := flag.String("route", "to-work.gpx", "The path to the GPX file to repeat")
+  configFileFlag := flag.String("config", "config.yml", "The path to the config file")
+  finishTimeFlag := flag.String("finish-time", time.Now().Format("15:04"), "The time you finished the activity")
+  finishDateFlag := flag.String("finish-date", time.Now().Format("2006-01-02"), "The date you finished the activity")
+
+  flag.Parse()
+
+  templateFile, _ := filepath.Abs(*gpxFileFlag)
+  configFile, _ := filepath.Abs(*configFileFlag)
 
   config := Config{}
   config.Read(configFile)
   log.Printf("Using access token: %v\n", config.AccessToken)
 
-  ReplaceFile(templateFile, targetFile, time.Now())
+  finishDateTime, err := time.Parse(layout, fmt.Sprintf("%vT%v:00Z", *finishDateFlag, *finishTimeFlag))
+  check(err)
+
+  ReplaceFile(templateFile, fmt.Sprintf("./fixed-%v", *gpxFileFlag), finishDateTime)
 
   log.Printf("Template times replaced\n")
 
-  activity := UploadGPX(config, targetFile)
+  activity := UploadGPX(config, *gpxFileFlag)
 
-  log.Printf("Activity created successfully ID: %v\n", activity.Id)
+  log.Printf("Activity created successfully.\n")
+  log.Printf("https://strava.com/activities/%v\n", activity.Id)
 }
