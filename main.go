@@ -1,14 +1,14 @@
 package main
 
 import (
-  // "github.com/strava/go.strava"
+  "github.com/strava/go.strava"
   "regexp"
   "time"
-  "fmt"
   "log"
   "gopkg.in/yaml.v2"
   "path/filepath"
   "io/ioutil"
+  "os"
 )
 
 // https://www.strava.com/oauth/authorize?client_id=7724&response_type=code&redirect_uri=http://localhost:3000&scope=write
@@ -20,7 +20,7 @@ import (
 
 func check(e error) {
   if e != nil {
-    panic(e)
+    log.Fatal(e)
   }
 }
 
@@ -31,7 +31,6 @@ func buildReplacer(distance time.Duration) func([]byte) []byte {
   return func(pointTime []byte) []byte {
     pointTimeTime, err := time.Parse(layout, string(pointTime))
     check(err)
-    // fmt.Printf("Parsed time: %v -- %v -- %v\n", string(pointTime), pointTimeTime)
     pointTimeTime = pointTimeTime.Add(distance)
     return []byte(pointTimeTime.Format(layout))
   }
@@ -44,64 +43,77 @@ func durationSinceTemplateFinish(gpx []byte, now time.Time) time.Duration {
   return now.Sub(gpxFinishTime)
 }
 
-func ReplaceFile(filepath string, newFilepath string, newFinishTime time.Time) {
-  template, _ := ioutil.ReadFile(filepath)
+func ReplaceFile(readFilepath string, writeFilepath string, newFinishTime time.Time) {
+  template, _ := ioutil.ReadFile(readFilepath)
 
   distance := durationSinceTemplateFinish(template, newFinishTime)
   template = iso8601.ReplaceAllFunc(template, buildReplacer(distance))
 
-  err := ioutil.WriteFile(newFilepath, template, 0644)
+  err := ioutil.WriteFile(writeFilepath, template, 0644)
   check(err)
 }
 
 type Config struct {
   AccessToken string `yaml:"access_token"`
+  BikeGearId string `yaml:"bike_gear_id"`
+  DefaultActivityDescription string `yaml:"default_activity_description"`
 }
 
 func (config *Config) Read(pathString string) {
-  // TODO: Move this into a function to DRY it. I'm doing the same thing twice.
   filename, _ := filepath.Abs(pathString)
   yamlFile, err := ioutil.ReadFile(filename)
-
-  if err != nil {
-    log.Fatalf("Error reading file %v: %v\n", filename, err)
-  }
-
+  check(err)
   err = yaml.Unmarshal(yamlFile, &config)
+  check(err)
+}
 
-  if err != nil {
-    log.Fatalf("Error parsing YAML from %v: %v\n", filename, err)
-  }
+func UploadGPX(config Config, gpxFilepath string) *strava.ActivityDetailed {
+  client := strava.NewClient(config.AccessToken)
+	uploadService := strava.NewUploadsService(client)
+  activityService := strava.NewActivitiesService(client)
 
-  fmt.Printf("Using access token from %v: %v\n", filename, config.AccessToken)
+  fileReader, err := os.Open(gpxFilepath)
+  check(err)
+
+  log.Printf("About to upload file\n")
+
+  upload, err := uploadService.
+		Create(strava.FileDataTypes.GPX, "fixed-to-work.gpx", fileReader).
+    ActivityType(strava.ActivityTypes.Ride).
+    Name("Test Upload 1").
+    Description(config.DefaultActivityDescription).
+		Do()
+
+  check(err)
+  log.Printf("File uploaded.\n")
+
+  time.Sleep(5 * time.Second)
+
+  uploadSummary, err := uploadService.Get(upload.Id).Do()
+  log.Printf("Got upload summary for upload ID: %v. %v\n", uploadSummary.Id, uploadSummary.ActivityId)
+
+  activity, err := activityService.Update(uploadSummary.ActivityId).
+    Commute(true).
+    Gear(config.BikeGearId).
+    Do()
+
+  return activity
 }
 
 func main() {
+  templateFile, _ := filepath.Abs("./to-work.gpx")
+  targetFile, _ := filepath.Abs("./fixed-to-work.gpx")
+  configFile, _ := filepath.Abs("./config.yml")
+
   config := Config{}
-  config.Read("./config.yml")
-  fmt.Printf("Got the access token %v\n", config.AccessToken)
+  config.Read(configFile)
+  log.Printf("Using access token: %v\n", config.AccessToken)
 
-  ReplaceFile("./to-work.gpx", "fixed-to-work.gpx", time.Now())
+  ReplaceFile(templateFile, targetFile, time.Now())
 
-  // stravaActivity, err := service.Create(activity.Name, strava.ActivityTypes.Ride, startTime, activity.Duration).
-  //                                 Description(activity.Description).
-  //                                 Distance(activity.Distance).
-  //                                 Do()
+  log.Printf("Template times replaced\n")
 
-  // if (err != nil) {
-  //   fmt.Fprintf(os.Stderr, "error: %v\n", err)
-  //   os.Exit(1)
-  // }
+  activity := UploadGPX(config, targetFile)
 
-  // _, err = service.Update(stravaActivity.Id).
-  //   Commute(activity.IsCommute).
-  //   Gear(activity.GearId).
-  //   Do()
-
-  // if (err != nil) {
-  //   fmt.Fprintf(os.Stderr, "error: %v\n", err)
-  //   os.Exit(1)
-  // }
-
-  // fmt.Printf("Activity created https://strava.com/activities/%v\n", stravaActivity.Id)
+  log.Printf("Activity created successfully ID: %v\n", activity.Id)
 }
