@@ -1,11 +1,40 @@
 # Strava Commuter
 
-I got sick of uploading my commute to Strava day after day so I wrote this
-small CLI program to read activity data from a YAML file (my commute is the
-same route and roughly the same time each day) and send to to Strava via
-their API.
+I got sick of manually creating my commute on Strava twice a day, day after day
+so I wrote this small CLI program to do it.
 
-It's written in Go and the code is probably horrible because I'm just learning it.
+Originally I was hoping I could take an existing GPX file, change the dates on
+the waypoints of it and upload the file to Strava as if I had just completed the
+route described in the file. The application does have that feature but it's
+unusable because Strava's activity duplication detection is better than I
+expected.
+
+Eventually I realized I'd have to settle for simply creating a manual activity
+via the CLI.
+
+It's written in Go and the code is probably horrible because I'm just learning
+the language.
+
+## Usage
+
+Create a `~/.strava-commuter/config.yml` config file which contains your Strava
+access token (more on that below) and some other details.
+
+```
+access_token: hiuhf98hfchu893u89j8dj8jd832
+bike_gear_id:
+default_activity_description: "Created with Strava Commuer."
+default_activity_duration: 600
+default_activity_distance: 2900
+default_activity_is_private: false
+default_activity_is_commute: true
+```
+
+You can copy the config.yml.dist in this repository for concenience.
+
+Create commutes like this:
+
+    commuter --finish-time="10:20"
 
 ## Strava Setup
 

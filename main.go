@@ -53,6 +53,10 @@ type Config struct {
   AccessToken string `yaml:"access_token"`
   BikeGearId string `yaml:"bike_gear_id"`
   DefaultActivityDescription string `yaml:"default_activity_description"`
+  DefaultActivityDuration int `yaml:"default_activity_duration"`
+  DefaultActivityDistance float64 `yaml:"default_activity_distance"`
+  DefaultActivityIsPrivate bool `yaml:"default_activity_is_private"`
+  DefaultActivityIsCommute bool `yaml:"default_activity_is_commute"`
 }
 
 func (config *Config) Read(pathString string) {
@@ -101,15 +105,42 @@ func UploadGPX(config Config, gpxFilename string) *strava.ActivityDetailed {
   return activity
 }
 
+func CreateManual(config Config, activityName string, finishTime time.Time) *strava.ActivityDetailed {
+  client := strava.NewClient(config.AccessToken)
+  activityService := strava.NewActivitiesService(client)
+
+  durationString, err := time.ParseDuration(fmt.Sprintf("-%vs",config.DefaultActivityDuration))
+  check(err)
+  activityStartTime := finishTime.Add(durationString)
+
+  activity, err := activityService.Create(activityName, strava.ActivityTypes.Ride, activityStartTime, config.DefaultActivityDuration).
+    Description(config.DefaultActivityDescription).
+    Distance(config.DefaultActivityDistance).
+    Do()
+
+  check(err)
+
+  activity, err = activityService.Update(activity.Id).
+    Private(config.DefaultActivityIsPrivate).
+    Commute(config.DefaultActivityIsCommute).
+    Gear(config.BikeGearId).
+    Do()
+
+  check(err)
+
+  return activity
+}
+
 func main() {
-  gpxFileFlag := flag.String("route", "to-work.gpx", "The path to the GPX file to repeat")
-  configFileFlag := flag.String("config", "config.yml", "The path to the config file")
+  // gpxFileFlag := flag.String("route", "to-work.gpx", "The path to the GPX file to repeat")
+  configFileFlag := flag.String("config", "~/.strava-commuter/config.yml", "The path to the config file")
   finishTimeFlag := flag.String("finish-time", time.Now().Format("15:04"), "The time you finished the activity")
   finishDateFlag := flag.String("finish-date", time.Now().Format("2006-01-02"), "The date you finished the activity")
+  activityName := flag.String("name", "To Work", "The activity name")
 
   flag.Parse()
 
-  templateFile, _ := filepath.Abs(*gpxFileFlag)
+  // templateFile, _ := filepath.Abs(*gpxFileFlag)
   configFile, _ := filepath.Abs(*configFileFlag)
 
   config := Config{}
@@ -119,11 +150,13 @@ func main() {
   finishDateTime, err := time.Parse(layout, fmt.Sprintf("%vT%v:00Z", *finishDateFlag, *finishTimeFlag))
   check(err)
 
-  ReplaceFile(templateFile, fmt.Sprintf("./fixed-%v", *gpxFileFlag), finishDateTime)
+  // ReplaceFile(templateFile, fmt.Sprintf("./fixed-%v", *gpxFileFlag), finishDateTime)
 
-  log.Printf("Template times replaced\n")
+  // log.Printf("Template times replaced\n")
 
-  activity := UploadGPX(config, *gpxFileFlag)
+  // activity := UploadGPX(config, *gpxFileFlag)
+
+  activity := CreateManual(config, *activityName, finishDateTime)
 
   log.Printf("Activity created successfully.\n")
   log.Printf("https://strava.com/activities/%v\n", activity.Id)

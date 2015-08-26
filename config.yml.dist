@@ -1,0 +1,7 @@
+access_token:
+bike_gear_id:
+default_activity_description: "Created with Strava Commuer."
+default_activity_duration: 600 # seconds
+default_activity_distance: 2900 # meters
+default_activity_is_private: false
+default_activity_is_commute: true
