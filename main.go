@@ -12,6 +12,7 @@ import (
   "flag"
   "fmt"
   "strings"
+  "os/user"
 )
 
 func check(e error) {
@@ -133,15 +134,18 @@ func CreateManual(config Config, activityName string, finishTime time.Time) *str
 
 func main() {
   // gpxFileFlag := flag.String("route", "to-work.gpx", "The path to the GPX file to repeat")
-  configFileFlag := flag.String("config", "~/.strava-commuter/config.yml", "The path to the config file")
-  finishTimeFlag := flag.String("finish-time", time.Now().Format("15:04"), "The time you finished the activity")
-  finishDateFlag := flag.String("finish-date", time.Now().Format("2006-01-02"), "The date you finished the activity")
+  configFileFlag := flag.String("config", ".strava-commuter/config.yml", "The path to the config file in your home directory.")
+  finishTimeFlag := flag.String("finish-time", time.Now().Format("15:04"), "The time you finished the activity. 24 hour, zero padded.")
+  finishDateFlag := flag.String("finish-date", time.Now().Format("2006-01-02"), "The date you finished the activity. Zero padded.")
   activityName := flag.String("name", "To Work", "The activity name")
 
   flag.Parse()
 
+  usr, err := user.Current()
+  check(err)
+
   // templateFile, _ := filepath.Abs(*gpxFileFlag)
-  configFile, _ := filepath.Abs(*configFileFlag)
+  configFile := filepath.Join(usr.HomeDir, *configFileFlag)
 
   config := Config{}
   config.Read(configFile)
